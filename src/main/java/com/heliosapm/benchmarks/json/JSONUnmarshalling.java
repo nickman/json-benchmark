@@ -238,7 +238,7 @@ public class JSONUnmarshalling {
 	 * @param args
 	 */
 	public static void main(String[] args) {
-		final Map<String, ChannelBuffer> bufferMap = HEAP_DATA_BUFFERS;
+		final Map<String, ChannelBuffer> bufferMap = DIRECT_DATA_BUFFERS;
 		log("JSON Test");
 		InputStream is = null;
 		final int WARMUP = 20000;
