@@ -417,19 +417,19 @@ public class JSONUnmarshalling {
 	
     
     public void stringReadTest(final ChannelBuffer buffer, final Blackhole blackHole) {
-//    	log("\n\t===================\n\tStarting StringRead Test: directBuff:[%s], sample:[%s]\n\t===================", buffer.isDirect(), sampleSet);
-		for(int x = 0; x < loopsPerOp; x++) {
-			blackHole.consume(parseToObject(buffer.toString(UTF8), Person[].class).length);
-			buffer.resetReaderIndex();
-		}
+//    	log("\n\t====================\n\tStrRead Thread [%s][%s]\n\t====================", Thread.currentThread().getName(), Thread.currentThread().getThreadGroup());
+			for(int x = 0; x < loopsPerOp; x++) {
+				blackHole.consume(parseToObject(buffer.toString(UTF8), Person[].class).length);
+				buffer.resetReaderIndex();
+			}
     }
     
     public void bufferReadTest(final ChannelBuffer buffer, final Blackhole blackHole) {
-//    	log("\n\t===================\n\tStarting StringRead Test: directBuff:[%s], sample:[%s]\n\t===================", buffer.isDirect(), sampleSet);
-		for(int x = 0; x < loopsPerOp; x++) {
-			blackHole.consume(parseToObject(buffer, Person[].class).length);
-			buffer.resetReaderIndex();
-		}  
+//    	log("\n\t====================\n\tBuffRead Thread [%s][%s]\n\t====================", Thread.currentThread().getName(), Thread.currentThread().getThreadGroup());
+    	for(int x = 0; x < loopsPerOp; x++) {
+				blackHole.consume(parseToObject(buffer, Person[].class).length);
+				buffer.resetReaderIndex();
+			}  
     }
     
     @Group("DirectStringRead1Kb")    
@@ -577,7 +577,7 @@ public class JSONUnmarshalling {
     @Fork(1)
     @OutputTimeUnit(TimeUnit.MILLISECONDS)
     @GroupThreads(3)
-    @OperationsPerInvocation(loopsPerOp * 888)
+    @OperationsPerInvocation(loopsPerOp * 888)    
     @Benchmark
     public void HeapStringRead614Kb(final Heap614Kb sample, final Blackhole blackhole) {
     	stringReadTest(sample.sampleBuff.duplicate(), blackhole);

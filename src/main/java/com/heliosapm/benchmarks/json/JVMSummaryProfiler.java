@@ -17,14 +17,21 @@ package com.heliosapm.benchmarks.json;
 
 import java.lang.management.GarbageCollectorMXBean;
 import java.lang.management.ManagementFactory;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.EnumMap;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.TimeUnit;
 
 import org.openjdk.jmh.infra.BenchmarkParams;
 import org.openjdk.jmh.infra.IterationParams;
 import org.openjdk.jmh.profile.InternalProfiler;
+import org.openjdk.jmh.profile.ProfilerResult;
+import org.openjdk.jmh.results.AggregationPolicy;
 import org.openjdk.jmh.results.IterationResult;
 import org.openjdk.jmh.results.Result;
 
@@ -46,13 +53,31 @@ public class JVMSummaryProfiler implements InternalProfiler {
 	private static final OperatingSystemMXBean OS =  (OperatingSystemMXBean)sun.management.ManagementFactoryHelper.getOperatingSystemMXBean();
 	private static final ThreadMXBean TX =  (ThreadMXBean)sun.management.ManagementFactoryHelper.getThreadMXBean();
 	
+	private static final Map<TimeUnit, String> TIMEUNITSYMBOLS;
+	
+	static {
+		final Map<TimeUnit, String> tmp = new EnumMap<TimeUnit, String>(TimeUnit.class);
+		tmp.put(TimeUnit.NANOSECONDS, "ns");
+		tmp.put(TimeUnit.MICROSECONDS, "\u00B5"+"s");
+		tmp.put(TimeUnit.MILLISECONDS, "ms");
+		tmp.put(TimeUnit.SECONDS, "s");
+		tmp.put(TimeUnit.MINUTES, "m");
+		tmp.put(TimeUnit.HOURS, "h");
+		tmp.put(TimeUnit.DAYS, "d");
+		TIMEUNITSYMBOLS = Collections.unmodifiableMap(tmp);
+	}
+	
 	
 	protected long[] baseline = null;
+	protected final ThreadGroup threadGroup;
+	protected final List<Thread> workerThreads = new CopyOnWriteArrayList<Thread>();
 
 	/**
 	 * Creates a new JVMSummaryProfiler
 	 */
 	public JVMSummaryProfiler() {
+		threadGroup = Thread.currentThread().getThreadGroup();
+//		log("\n\t====================\n\tProf Thread [%s][%s]\n\t====================", Thread.currentThread().getName(), Thread.currentThread().getThreadGroup());
 	}
 
 	/**
@@ -79,32 +104,73 @@ public class JVMSummaryProfiler implements InternalProfiler {
 	 */
 	@Override
 	public Collection<? extends Result> afterIteration(final BenchmarkParams benchmarkParams, final IterationParams iterationParams, final IterationResult result) {		
-		System.out.println(getJVMStats(baseline, TimeUnit.SECONDS, SpaceUnit.MEGABYTES, benchmarkParams.getBenchmark()));
-		return Collections.emptySet();
+		final Collection<Result> results = new ArrayList<Result>(5);
+//		benchmarkParams.getParam("")
+		final int tcount = benchmarkParams.getThreads();
+		final Thread[] threads = new Thread[tcount+1];
+		threadGroup.enumerate(threads, false);
+		final String bname = benchmarkParams.getBenchmark();
+		for(Thread t: threads) {
+			if(t.getName().startsWith(bname)) {
+				workerThreads.add(t);				
+			}
+		}
+		getJVMStats(baseline, TimeUnit.SECONDS, SpaceUnit.MEGABYTES, benchmarkParams.getBenchmark(), results);
+//		log("Test: [%s], TG Threads: %s", benchmarkParams.getBenchmark(), Arrays.toString(threads));		
+		return results;
 	}
 	
-	public static long[] getJVMStats() {
+	public long[] getJVMStats() {
 		final long[] countTime = new long[5];
 		for(GarbageCollectorMXBean gc: collectors) {
 			countTime[0] += gc.getCollectionCount();
 			countTime[1] += gc.getCollectionTime();
 		}
-		countTime[2] = TX.getCurrentThreadCpuTime();
 		countTime[3] = OS.getProcessCpuTime();
-		countTime[4] = TX.getThreadAllocatedBytes(Thread.currentThread().getId());
+		final long[] tstats = collectThreadStats();
+		countTime[2] = tstats[0];		
+		countTime[4] = tstats[1];
 		return countTime;
 	}
 	
-	public static String getJVMStats(final long[] prior, TimeUnit cpuUnit, SpaceUnit memUnit, final String testName) {
+	public String getJVMStats(final long[] prior, final TimeUnit cpuUnit, final SpaceUnit memUnit, final String testName, final Collection<Result> results) {
 		final long[] countTime = getJVMStats();
+		final long[] deltas = new long[]{
+				countTime[0] - prior[0],
+				countTime[1] - prior[1],
+				countTime[2] - prior[2],
+				countTime[3] - prior[3],
+				countTime[4] - prior[4],
+		};
+		results.add(new ProfilerResult("GC-Collections", deltas[0], "GC Collections", AggregationPolicy.SUM));
+		results.add(new ProfilerResult("GC-Time", deltas[1], "ms", AggregationPolicy.SUM));
+		results.add(new ProfilerResult("ThreadCPU", cpuUnit.convert(deltas[2], TimeUnit.NANOSECONDS), TIMEUNITSYMBOLS.get(cpuUnit), AggregationPolicy.SUM));
+		results.add(new ProfilerResult("JVMCPU", cpuUnit.convert(deltas[3], TimeUnit.NANOSECONDS), TIMEUNITSYMBOLS.get(cpuUnit), AggregationPolicy.SUM));
+		results.add(new ProfilerResult("MemAlloc", memUnit.dconvert(deltas[4], SpaceUnit.BYTES), memUnit.symbol(), AggregationPolicy.SUM));
+
 		final StringBuilder b = new StringBuilder("JVM Stats for [").append(testName).append("]");
-		b.append("\n\tGC Collections:").append(countTime[0] - prior[0]);
-		b.append("\n\tGC Time:").append(countTime[1] - prior[1]);
-		b.append("\n\tThread CPU Time:").append(cpuUnit.convert(countTime[2] - prior[2], TimeUnit.NANOSECONDS));
-		b.append("\n\tJVM CPU Time:").append(cpuUnit.convert(countTime[3] - prior[3], TimeUnit.NANOSECONDS));
-		b.append("\n\tAllocated Bytes:").append((memUnit.fovert(countTime[4] - prior[4], SpaceUnit.BYTES)));
+		
+		b.append("\n\tGC Collections:").append(deltas[0]);
+		b.append("\n\tGC Time:").append(deltas[1] - prior[1]);
+		b.append("\n\tThread CPU Time:").append(cpuUnit.convert(deltas[2], TimeUnit.NANOSECONDS));
+		b.append("\n\tJVM CPU Time:").append(cpuUnit.convert(deltas[3], TimeUnit.NANOSECONDS));
+		b.append("\n\tAllocated Bytes:").append((memUnit.fovert(deltas[4], SpaceUnit.BYTES)));
 		return b.toString();		
 	}
+	
+	protected long[] collectThreadStats() {
+		final long[] snapshot = new long[2];
+		for(Thread t: workerThreads) {
+			final long id = t.getId();
+			snapshot[0] = TX.getThreadCpuTime(id);
+			snapshot[1] = TX.getThreadAllocatedBytes(id);
+		}
+		return snapshot;
+	}
+	
+  public static void log(final Object fmt, final Object...args) {
+  	System.out.println(String.format(fmt.toString(), args));
+  }
 	
 
 }

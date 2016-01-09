@@ -45,7 +45,7 @@ public class TestBenchmark {
 	launchBenchmark() throws Exception {
 
 		Options opt = new OptionsBuilder()
-		.include(".*")
+		.include(System.getProperty("test.names", ".*"))
 		// Set the following options as needed
 		.mode (Mode.AverageTime)
 		.timeUnit(TimeUnit.MICROSECONDS)
@@ -54,10 +54,11 @@ public class TestBenchmark {
 		.measurementTime(TimeValue.seconds(1))
 		.measurementIterations(2)
 		.threads(3)
+//		.syncIterations(false)
 		.forks(1)
 		.shouldFailOnError(true)
 		.shouldDoGC(true)
-//		.addProfiler(JVMSummaryProfiler.class)
+		.addProfiler(JVMSummaryProfiler.class)
 //		.addProfiler(HotspotMemoryProfiler.class)
 //		.addProfiler(LinuxPerfAsmProfiler.class)
 		
