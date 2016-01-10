@@ -20,7 +20,10 @@ package com.heliosapm.benchmarks.json;
 
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.io.OutputStream;
+import java.io.OutputStreamWriter;
 import java.io.Reader;
+import java.io.Writer;
 import java.lang.management.GarbageCollectorMXBean;
 import java.lang.management.ManagementFactory;
 import java.nio.ByteBuffer;
@@ -41,6 +44,7 @@ import java.util.zip.GZIPInputStream;
 import org.jboss.netty.buffer.ChannelBuffer;
 import org.jboss.netty.buffer.ChannelBufferFactory;
 import org.jboss.netty.buffer.ChannelBufferInputStream;
+import org.jboss.netty.buffer.ChannelBufferOutputStream;
 import org.jboss.netty.buffer.DirectChannelBufferFactory;
 import org.jboss.netty.buffer.HeapChannelBufferFactory;
 import org.openjdk.jmh.annotations.Benchmark;
@@ -179,6 +183,36 @@ public class JSONUnmarshalling {
     }
   }	
   
+  public static final ChannelBuffer serializeToBuffer(final ChannelBufferFactory bfactory, final Object object) {
+	    if (object == null)
+	      throw new IllegalArgumentException("Object was null");
+	    OutputStream os = null;
+	    Writer wos = null;
+	    try {
+	    	final ChannelBuffer b = bfactory.getBuffer(1024);
+	    	os = new ChannelBufferOutputStream(b);
+	    	wos = new OutputStreamWriter(os, UTF8);
+	    	jsonMapper.writeValue(wos, object);
+	        return b;
+	    } catch (Exception e) {
+	      throw new RuntimeException(e);
+	    } finally {
+	    	if(wos!=null) try { wos.close(); } catch (Exception x) {/* No Op */}
+	    	if(os!=null) try { os.close(); } catch (Exception x) {/* No Op */}
+	    }
+	  }
+  
+  public static final String serializeToString(final Object object) {
+	    if (object == null)
+	      throw new IllegalArgumentException("Object was null");
+	    try {
+	    	return jsonMapper.writeValueAsString(object);
+	    } catch (Exception e) {
+	      throw new RuntimeException(e);
+	    }
+	  }
+
+  
   /**
    * Deserializes a JSON formatted string to a specific class type
    * <b>Note:</b> If you get mapping exceptions you may need to provide a 
@@ -217,14 +251,17 @@ public class JSONUnmarshalling {
       throw new IllegalArgumentException("Incoming data was null or empty");
     if (pojo == null)
       throw new IllegalArgumentException("Missing class type");
+    InputStream i = null;
     Reader r = null;
     try {
-    	r = new InputStreamReader(new ChannelBufferInputStream(json));
+    	i = new ChannelBufferInputStream(json); 
+    	r = new InputStreamReader(i);
       return jsonMapper.readValue(r, pojo);
     } catch (Exception e) {
       throw new RuntimeException(e);
     } finally {
     	if(r!=null) try { r.close(); } catch (Exception x) {/* No Op */}
+    	if(i!=null) try { i.close(); } catch (Exception x) {/* No Op */}
     }
   }    
 	
@@ -266,74 +303,74 @@ public class JSONUnmarshalling {
 		log("Starting Warmup....");
 		long total = 0;
 		System.gc();System.gc();
-		long[] initStats = getJVMStats();
+//		long[] initStats = getJVMStats();
 		ElapsedTime et = SystemClock.startClock();
 		for(int x = 0; x < WARMUP; x++) {
 			total += parseToObject(bufferMap.get("sample-56kb.json.gz").duplicate().toString(UTF8), Person[].class).length;
 		}
-		String stats = getJVMStats(initStats, cpuUnit, memUnit);
-		log("STRING Warmup Complete: %s:\t%s\n%s", total, et.printAvg("Loads", total), stats);
+//		String stats = getJVMStats(initStats, cpuUnit, memUnit);
+//		log("STRING Warmup Complete: %s:\t%s\n%s", total, et.printAvg("Loads", total), stats);
 		total = 0;
 		System.gc();System.gc();
-		initStats = getJVMStats();
+//		initStats = getJVMStats();
 		et = SystemClock.startClock();
 		for(int x = 0; x < WARMUP; x++) {
 			total += parseToObject(bufferMap.get("sample-56kb.json.gz").duplicate(), Person[].class).length;
 		}
-		stats = getJVMStats(initStats, cpuUnit, memUnit);
-		log("BUFFER Warmup Complete: %s:\t%s\n%s", total, et.printAvg("Loads", total), stats);
+//		stats = getJVMStats(initStats, cpuUnit, memUnit);
+//		log("BUFFER Warmup Complete: %s:\t%s\n%s", total, et.printAvg("Loads", total), stats);
 		log("================================================================================================");
 		log("================================================================================================");		
 		log("Starting Test");
 		total = 0;
 		System.gc();System.gc();
-		initStats = getJVMStats();
+//		initStats = getJVMStats();
 		et = SystemClock.startClock();		
 		for(String sample: DATA) {
 			for(int x = 0; x < TEST; x++) {
 				total += parseToObject(bufferMap.get(sample).duplicate().toString(UTF8), Person[].class).length;
 			}
 		}
-		stats = getJVMStats(initStats, cpuUnit, memUnit);
-		log("STRING Test Complete: %s:\t%s\n%s", total, et.printAvg("Loads", total), stats);
+//		stats = getJVMStats(initStats, cpuUnit, memUnit);
+//		log("STRING Test Complete: %s:\t%s\n%s", total, et.printAvg("Loads", total), stats);
 		log("================================================================================================");
 		total = 0;
 		System.gc();System.gc();
-		initStats = getJVMStats();
+//		initStats = getJVMStats();
 		et = SystemClock.startClock();		
 		for(String sample: DATA) {
 			for(int x = 0; x < TEST; x++) {
 				total += parseToObject(bufferMap.get(sample).duplicate(), Person[].class).length;
 			}
 		}
-		stats = getJVMStats(initStats, cpuUnit, memUnit);
-		log("BUFFER Test Complete: %s:\t%s\n%s", total, et.printAvg("Loads", total), stats);
+//		stats = getJVMStats(initStats, cpuUnit, memUnit);
+//		log("BUFFER Test Complete: %s:\t%s\n%s", total, et.printAvg("Loads", total), stats);
 		
 
 	}
 	
-	public static long[] getJVMStats() {
-		final long[] countTime = new long[5];
-		for(GarbageCollectorMXBean gc: collectors) {
-			countTime[0] += gc.getCollectionCount();
-			countTime[1] += gc.getCollectionTime();
-		}
-		countTime[2] = TX.getCurrentThreadCpuTime();
-		countTime[3] = OS.getProcessCpuTime();
-		countTime[4] = TX.getThreadAllocatedBytes(Thread.currentThread().getId());
-		return countTime;
-	}
-	
-	public static String getJVMStats(final long[] prior, TimeUnit cpuUnit, SpaceUnit memUnit) {
-		final long[] countTime = getJVMStats();
-		final StringBuilder b = new StringBuilder("JVM Stats:");
-		b.append("\n\tGC Collections:").append(countTime[0] - prior[0]);
-		b.append("\n\tGC Time:").append(countTime[1] - prior[1]);
-		b.append("\n\tThread CPU Time:").append(cpuUnit.convert(countTime[2] - prior[2], TimeUnit.NANOSECONDS));
-		b.append("\n\tJVM CPU Time:").append(cpuUnit.convert(countTime[3] - prior[3], TimeUnit.NANOSECONDS));
-		b.append("\n\tAllocated Bytes:").append((memUnit.fovert(countTime[4] - prior[4], SpaceUnit.BYTES)));
-		return b.toString();		
-	}
+//	public static long[] getJVMStats() {
+//		final long[] countTime = new long[5];
+//		for(GarbageCollectorMXBean gc: collectors) {
+//			countTime[0] += gc.getCollectionCount();
+//			countTime[1] += gc.getCollectionTime();
+//		}
+//		countTime[2] = TX.getCurrentThreadCpuTime();
+//		countTime[3] = OS.getProcessCpuTime();
+//		countTime[4] = TX.getThreadAllocatedBytes(Thread.currentThread().getId());
+//		return countTime;
+//	}
+//	
+//	public static String getJVMStats(final long[] prior, TimeUnit cpuUnit, SpaceUnit memUnit) {
+//		final long[] countTime = getJVMStats();
+//		final StringBuilder b = new StringBuilder("JVM Stats:");
+//		b.append("\n\tGC Collections:").append(countTime[0] - prior[0]);
+//		b.append("\n\tGC Time:").append(countTime[1] - prior[1]);
+//		b.append("\n\tThread CPU Time:").append(cpuUnit.convert(countTime[2] - prior[2], TimeUnit.NANOSECONDS));
+//		b.append("\n\tJVM CPU Time:").append(cpuUnit.convert(countTime[3] - prior[3], TimeUnit.NANOSECONDS));
+//		b.append("\n\tAllocated Bytes:").append((memUnit.fovert(countTime[4] - prior[4], SpaceUnit.BYTES)));
+//		return b.toString();		
+//	}
 	
   public static void log(final Object fmt, final Object...args) {
   	System.out.println(String.format(fmt.toString(), args));
@@ -341,72 +378,89 @@ public class JSONUnmarshalling {
   
   private static final Map<String, String> allJVMStats = new LinkedHashMap<String, String>();
   
-  static {
-	  Runtime.getRuntime().addShutdownHook(new Thread(){
-		  public void run() {
-			  log("\n\n\tJVM STATS SUMMARY");
-			  for(Map.Entry<String, String> entry: allJVMStats.entrySet()) {
-				  log("Test [%s]\n%s", entry.getKey(), entry.getValue());
-			  }
-		  }
-	  });
+  public static Person[] deserPersons(final ChannelBuffer buff) {
+	  InputStream is = null;
+	  Reader ros = null;
+	  try {
+		  is = new ChannelBufferInputStream(buff);
+		  ros = new InputStreamReader(is, UTF8);
+		  return jsonMapper.readValue(ros, Person[].class);
+	  } catch (Exception ex) {
+		  throw new RuntimeException(ex);
+	  } finally {
+		  if(ros!=null) try { ros.close(); } catch (Exception x) {/* No Op */}
+		  if(is!=null) try { is.close(); } catch (Exception x) {/* No Op */}
+		  buff.resetReaderIndex();
+	  }
   }
+  
   
    public static abstract class Sample {
 		@Setup(Level.Trial)
 		public void setup() {
-			System.gc(); System.gc();
-			jvmStats = getJVMStats();
+			System.gc();
 			totalParsed = 0;
 		}
 	    @TearDown(Level.Trial)
 	    public void clear() {
-	    	final String stats = getJVMStats(jvmStats, cpuUnit, memUnit);
-	    	allJVMStats.put(getClass().getSimpleName(), stats);
-	    	log("[JVM Stats:" + getClass().getSimpleName() + "]:" + stats);
+	    	/* No Op */
 	    }
-		
-	   
    }
   
 	@State(Scope.Group)
 	public static class Heap56Kb extends Sample {
 		final ChannelBuffer sampleBuff = HEAP_DATA_BUFFERS.get("sample-56kb.json.gz");
+		final Person[] pojos = deserPersons(sampleBuff);
+		final ChannelBufferFactory cbf = heapFactory;
 	}
 	
 	@State(Scope.Group)
 	public static class Direct56Kb extends Sample {
 		final ChannelBuffer sampleBuff = DIRECT_DATA_BUFFERS.get("sample-56kb.json.gz");
+		final Person[] pojos = deserPersons(sampleBuff);
+		final ChannelBufferFactory cbf = directFactory;
 	}
 	
 	@State(Scope.Group)
 	public static class Heap118Kb extends Sample {
 		final ChannelBuffer sampleBuff = HEAP_DATA_BUFFERS.get("sample-118kb.json.gz");
+		final Person[] pojos = deserPersons(sampleBuff);
+		final ChannelBufferFactory cbf = heapFactory;
 	}
 	
 	@State(Scope.Group)
 	public static class Direct118Kb extends Sample {
 		final ChannelBuffer sampleBuff = DIRECT_DATA_BUFFERS.get("sample-118kb.json.gz");
+		final Person[] pojos = deserPersons(sampleBuff);
+		final ChannelBufferFactory cbf = directFactory;
 	}
 	
 	@State(Scope.Group)
 	public static class Heap614Kb extends Sample {
 		final ChannelBuffer sampleBuff = HEAP_DATA_BUFFERS.get("sample-614kb.json.gz");
+		final Person[] pojos = deserPersons(sampleBuff);
+		final ChannelBufferFactory cbf = heapFactory;
 	}
 	
 	@State(Scope.Group)
 	public static class Direct614Kb extends Sample {
 		final ChannelBuffer sampleBuff = DIRECT_DATA_BUFFERS.get("sample-614kb.json.gz");
+		final Person[] pojos = deserPersons(sampleBuff);
+		final ChannelBufferFactory cbf = directFactory;
 	}
 
 	@State(Scope.Group)
 	public static class Heap1Kb extends Sample {
 		final ChannelBuffer sampleBuff = HEAP_DATA_BUFFERS.get("sample-1kb.json.gz");
+		final Person[] pojos = deserPersons(sampleBuff);
+		final ChannelBufferFactory cbf = heapFactory;
 	}
 	
 	@State(Scope.Group)
 	public static class Direct1Kb extends Sample {
 		final ChannelBuffer sampleBuff = DIRECT_DATA_BUFFERS.get("sample-1kb.json.gz");
+		final Person[] pojos = deserPersons(sampleBuff);
+		final ChannelBufferFactory cbf = directFactory;
 	}
 	
   
@@ -432,6 +486,19 @@ public class JSONUnmarshalling {
 			}  
     }
     
+    public void stringWriteTest(final Person[] people, final ChannelBufferFactory factory, final Blackhole blackHole) {
+			for(int x = 0; x < loopsPerOp; x++) {
+				blackHole.consume(serializeToString(people));				
+			}
+    }
+    
+    public void bufferWriteTest(final Person[] people, final ChannelBufferFactory factory, final Blackhole blackHole) {
+			for(int x = 0; x < loopsPerOp; x++) {
+				blackHole.consume(serializeToBuffer(factory, people));				
+			}
+    }
+    
+    
     @Group("DirectStringRead1Kb")    
     @Fork(1)
     @OutputTimeUnit(TimeUnit.MILLISECONDS)
@@ -441,6 +508,9 @@ public class JSONUnmarshalling {
     public void DirectStringRead1Kb(final Direct1Kb sample, final Blackhole blackhole) {
     	stringReadTest(sample.sampleBuff.duplicate(), blackhole);
     }
+    
+    
+    
     
     @Group("DirectBufferRead1Kb")    
     @Fork(1)
@@ -591,6 +661,166 @@ public class JSONUnmarshalling {
     @Benchmark
     public void HeapBufferRead614Kb(final Heap614Kb sample, final Blackhole blackhole) {
     	bufferReadTest(sample.sampleBuff.duplicate(), blackhole);
+    }
+
+    @Group("DirectStringWrite1Kb")    
+    @Fork(1)
+    @OutputTimeUnit(TimeUnit.MILLISECONDS)
+    @GroupThreads(3)
+    @OperationsPerInvocation(loopsPerOp * 1)
+    @Benchmark
+    public void DirectStringWrite1Kb(final Direct1Kb sample, final Blackhole blackhole) {
+        stringWriteTest(sample.pojos, sample.cbf, blackhole);
+    }
+
+    @Group("DirectStringWrite56Kb")    
+    @Fork(1)
+    @OutputTimeUnit(TimeUnit.MILLISECONDS)
+    @GroupThreads(3)
+    @OperationsPerInvocation(loopsPerOp * 82)
+    @Benchmark
+    public void DirectStringWrite56Kb(final Direct56Kb sample, final Blackhole blackhole) {
+        stringWriteTest(sample.pojos, sample.cbf, blackhole);
+    }
+
+    @Group("DirectStringWrite118Kb")    
+    @Fork(1)
+    @OutputTimeUnit(TimeUnit.MILLISECONDS)
+    @GroupThreads(3)
+    @OperationsPerInvocation(loopsPerOp * 171)
+    @Benchmark
+    public void DirectStringWrite118Kb(final Direct118Kb sample, final Blackhole blackhole) {
+        stringWriteTest(sample.pojos, sample.cbf, blackhole);
+    }
+
+    @Group("DirectStringWrite614Kb")    
+    @Fork(1)
+    @OutputTimeUnit(TimeUnit.MILLISECONDS)
+    @GroupThreads(3)
+    @OperationsPerInvocation(loopsPerOp * 888)
+    @Benchmark
+    public void DirectStringWrite614Kb(final Direct614Kb sample, final Blackhole blackhole) {
+        stringWriteTest(sample.pojos, sample.cbf, blackhole);
+    }
+
+    @Group("DirectBufferWrite1Kb")    
+    @Fork(1)
+    @OutputTimeUnit(TimeUnit.MILLISECONDS)
+    @GroupThreads(3)
+    @OperationsPerInvocation(loopsPerOp * 1)
+    @Benchmark
+    public void DirectBufferWrite1Kb(final Direct1Kb sample, final Blackhole blackhole) {
+        bufferWriteTest(sample.pojos, sample.cbf, blackhole);
+    }
+
+    @Group("DirectBufferWrite56Kb")    
+    @Fork(1)
+    @OutputTimeUnit(TimeUnit.MILLISECONDS)
+    @GroupThreads(3)
+    @OperationsPerInvocation(loopsPerOp * 82)
+    @Benchmark
+    public void DirectBufferWrite56Kb(final Direct56Kb sample, final Blackhole blackhole) {
+        bufferWriteTest(sample.pojos, sample.cbf, blackhole);
+    }
+
+    @Group("DirectBufferWrite118Kb")    
+    @Fork(1)
+    @OutputTimeUnit(TimeUnit.MILLISECONDS)
+    @GroupThreads(3)
+    @OperationsPerInvocation(loopsPerOp * 171)
+    @Benchmark
+    public void DirectBufferWrite118Kb(final Direct118Kb sample, final Blackhole blackhole) {
+        bufferWriteTest(sample.pojos, sample.cbf, blackhole);
+    }
+
+    @Group("DirectBufferWrite614Kb")    
+    @Fork(1)
+    @OutputTimeUnit(TimeUnit.MILLISECONDS)
+    @GroupThreads(3)
+    @OperationsPerInvocation(loopsPerOp * 888)
+    @Benchmark
+    public void DirectBufferWrite614Kb(final Direct614Kb sample, final Blackhole blackhole) {
+        bufferWriteTest(sample.pojos, sample.cbf, blackhole);
+    }
+
+    @Group("HeapStringWrite1Kb")    
+    @Fork(1)
+    @OutputTimeUnit(TimeUnit.MILLISECONDS)
+    @GroupThreads(3)
+    @OperationsPerInvocation(loopsPerOp * 1)
+    @Benchmark
+    public void HeapStringWrite1Kb(final Heap1Kb sample, final Blackhole blackhole) {
+        stringWriteTest(sample.pojos, sample.cbf, blackhole);
+    }
+
+    @Group("HeapStringWrite56Kb")    
+    @Fork(1)
+    @OutputTimeUnit(TimeUnit.MILLISECONDS)
+    @GroupThreads(3)
+    @OperationsPerInvocation(loopsPerOp * 82)
+    @Benchmark
+    public void HeapStringWrite56Kb(final Heap56Kb sample, final Blackhole blackhole) {
+        stringWriteTest(sample.pojos, sample.cbf, blackhole);
+    }
+
+    @Group("HeapStringWrite118Kb")    
+    @Fork(1)
+    @OutputTimeUnit(TimeUnit.MILLISECONDS)
+    @GroupThreads(3)
+    @OperationsPerInvocation(loopsPerOp * 171)
+    @Benchmark
+    public void HeapStringWrite118Kb(final Heap118Kb sample, final Blackhole blackhole) {
+        stringWriteTest(sample.pojos, sample.cbf, blackhole);
+    }
+
+    @Group("HeapStringWrite614Kb")    
+    @Fork(1)
+    @OutputTimeUnit(TimeUnit.MILLISECONDS)
+    @GroupThreads(3)
+    @OperationsPerInvocation(loopsPerOp * 888)
+    @Benchmark
+    public void HeapStringWrite614Kb(final Heap614Kb sample, final Blackhole blackhole) {
+        stringWriteTest(sample.pojos, sample.cbf, blackhole);
+    }
+
+    @Group("HeapBufferWrite1Kb")    
+    @Fork(1)
+    @OutputTimeUnit(TimeUnit.MILLISECONDS)
+    @GroupThreads(3)
+    @OperationsPerInvocation(loopsPerOp * 1)
+    @Benchmark
+    public void HeapBufferWrite1Kb(final Heap1Kb sample, final Blackhole blackhole) {
+        bufferWriteTest(sample.pojos, sample.cbf, blackhole);
+    }
+
+    @Group("HeapBufferWrite56Kb")    
+    @Fork(1)
+    @OutputTimeUnit(TimeUnit.MILLISECONDS)
+    @GroupThreads(3)
+    @OperationsPerInvocation(loopsPerOp * 82)
+    @Benchmark
+    public void HeapBufferWrite56Kb(final Heap56Kb sample, final Blackhole blackhole) {
+        bufferWriteTest(sample.pojos, sample.cbf, blackhole);
+    }
+
+    @Group("HeapBufferWrite118Kb")    
+    @Fork(1)
+    @OutputTimeUnit(TimeUnit.MILLISECONDS)
+    @GroupThreads(3)
+    @OperationsPerInvocation(loopsPerOp * 171)
+    @Benchmark
+    public void HeapBufferWrite118Kb(final Heap118Kb sample, final Blackhole blackhole) {
+        bufferWriteTest(sample.pojos, sample.cbf, blackhole);
+    }
+
+    @Group("HeapBufferWrite614Kb")    
+    @Fork(1)
+    @OutputTimeUnit(TimeUnit.MILLISECONDS)
+    @GroupThreads(3)
+    @OperationsPerInvocation(loopsPerOp * 888)
+    @Benchmark
+    public void HeapBufferWrite614Kb(final Heap614Kb sample, final Blackhole blackhole) {
+        bufferWriteTest(sample.pojos, sample.cbf, blackhole);
     }
 
 	

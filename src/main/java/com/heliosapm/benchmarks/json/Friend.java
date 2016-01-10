@@ -2,7 +2,7 @@ package com.heliosapm.benchmarks.json;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 
-public class Friend {
+public class Friend implements java.io.Serializable {
 	@JsonProperty("id")
 	int id = -1;
 	@JsonProperty("name")

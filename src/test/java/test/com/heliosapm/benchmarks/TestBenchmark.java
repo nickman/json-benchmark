@@ -19,6 +19,7 @@ import java.util.concurrent.TimeUnit;
 
 import org.junit.Test;
 import org.openjdk.jmh.annotations.Mode;
+import org.openjdk.jmh.results.format.ResultFormatType;
 import org.openjdk.jmh.runner.Runner;
 import org.openjdk.jmh.runner.options.Options;
 import org.openjdk.jmh.runner.options.OptionsBuilder;
@@ -45,13 +46,13 @@ public class TestBenchmark {
 	launchBenchmark() throws Exception {
 
 		Options opt = new OptionsBuilder()
-		.include(System.getProperty("test.names", ".*"))
+		.include(System.getProperty("test.names", ".*Write.*"))
 		// Set the following options as needed
-		.mode (Mode.AverageTime)
-		.timeUnit(TimeUnit.MICROSECONDS)
-		.warmupTime(TimeValue.seconds(1))
+		.mode (Mode.Throughput)
+		.timeUnit(TimeUnit.MILLISECONDS)
+		.warmupTime(TimeValue.seconds(5))
 		.warmupIterations(1)
-		.measurementTime(TimeValue.seconds(1))
+		.measurementTime(TimeValue.seconds(5))
 		.measurementIterations(2)
 		.threads(3)
 //		.syncIterations(false)
@@ -59,6 +60,9 @@ public class TestBenchmark {
 		.shouldFailOnError(true)
 		.shouldDoGC(true)
 		.addProfiler(JVMSummaryProfiler.class)
+//		.output("output.txt")
+		.result("results-tp.csv")
+		.resultFormat(ResultFormatType.CSV)
 //		.addProfiler(HotspotMemoryProfiler.class)
 //		.addProfiler(LinuxPerfAsmProfiler.class)
 		

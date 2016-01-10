@@ -115,7 +115,7 @@ public class JVMSummaryProfiler implements InternalProfiler {
 				workerThreads.add(t);				
 			}
 		}
-		getJVMStats(baseline, TimeUnit.SECONDS, SpaceUnit.MEGABYTES, benchmarkParams.getBenchmark(), results);
+		getJVMStats(baseline, TimeUnit.MILLISECONDS, benchmarkParams.getBenchmark(), results);
 //		log("Test: [%s], TG Threads: %s", benchmarkParams.getBenchmark(), Arrays.toString(threads));		
 		return results;
 	}
@@ -133,7 +133,7 @@ public class JVMSummaryProfiler implements InternalProfiler {
 		return countTime;
 	}
 	
-	public String getJVMStats(final long[] prior, final TimeUnit cpuUnit, final SpaceUnit memUnit, final String testName, final Collection<Result> results) {
+	public void getJVMStats(final long[] prior, final TimeUnit cpuUnit, final String testName, final Collection<Result> results) {
 		final long[] countTime = getJVMStats();
 		final long[] deltas = new long[]{
 				countTime[0] - prior[0],
@@ -142,20 +142,21 @@ public class JVMSummaryProfiler implements InternalProfiler {
 				countTime[3] - prior[3],
 				countTime[4] - prior[4],
 		};
-		results.add(new ProfilerResult("GC-Collections", deltas[0], "GC Collections", AggregationPolicy.SUM));
-		results.add(new ProfilerResult("GC-Time", deltas[1], "ms", AggregationPolicy.SUM));
-		results.add(new ProfilerResult("ThreadCPU", cpuUnit.convert(deltas[2], TimeUnit.NANOSECONDS), TIMEUNITSYMBOLS.get(cpuUnit), AggregationPolicy.SUM));
-		results.add(new ProfilerResult("JVMCPU", cpuUnit.convert(deltas[3], TimeUnit.NANOSECONDS), TIMEUNITSYMBOLS.get(cpuUnit), AggregationPolicy.SUM));
-		results.add(new ProfilerResult("MemAlloc", memUnit.dconvert(deltas[4], SpaceUnit.BYTES), memUnit.symbol(), AggregationPolicy.SUM));
+		results.add(new ProfilerResult("GC-Collections", deltas[0], "GC Collections", AggregationPolicy.AVG));
+		results.add(new ProfilerResult("GC-Time", deltas[1], "GC Time", AggregationPolicy.AVG));
+		results.add(new ProfilerResult("ThreadCPU", cpuUnit.convert(deltas[2], TimeUnit.NANOSECONDS), "ThreadCPU " + TIMEUNITSYMBOLS.get(cpuUnit), AggregationPolicy.AVG));
+		results.add(new ProfilerResult("JVMCPU", cpuUnit.convert(deltas[3], TimeUnit.NANOSECONDS), "JVMCPU " + TIMEUNITSYMBOLS.get(cpuUnit), AggregationPolicy.AVG));
+		final SpaceUnit su = SpaceUnit.KILOBYTES; //.pickUnit(deltas[4]);
+		results.add(new ProfilerResult("MemAlloc", su.dconvert(deltas[4], SpaceUnit.BYTES), "Memory Allocated " + su.symbol(), AggregationPolicy.AVG));
 
-		final StringBuilder b = new StringBuilder("JVM Stats for [").append(testName).append("]");
-		
-		b.append("\n\tGC Collections:").append(deltas[0]);
-		b.append("\n\tGC Time:").append(deltas[1] - prior[1]);
-		b.append("\n\tThread CPU Time:").append(cpuUnit.convert(deltas[2], TimeUnit.NANOSECONDS));
-		b.append("\n\tJVM CPU Time:").append(cpuUnit.convert(deltas[3], TimeUnit.NANOSECONDS));
-		b.append("\n\tAllocated Bytes:").append((memUnit.fovert(deltas[4], SpaceUnit.BYTES)));
-		return b.toString();		
+//		final StringBuilder b = new StringBuilder("JVM Stats for [").append(testName).append("]");
+//		
+//		b.append("\n\tGC Collections:").append(deltas[0]);
+//		b.append("\n\tGC Time:").append(deltas[1] - prior[1]);
+//		b.append("\n\tThread CPU Time:").append(cpuUnit.convert(deltas[2], TimeUnit.NANOSECONDS));
+//		b.append("\n\tJVM CPU Time:").append(cpuUnit.convert(deltas[3], TimeUnit.NANOSECONDS));
+//		b.append("\n\tAllocated Bytes:").append((su.fovert(deltas[4], SpaceUnit.BYTES)));
+//		return b.toString();		
 	}
 	
 	protected long[] collectThreadStats() {
@@ -168,9 +169,9 @@ public class JVMSummaryProfiler implements InternalProfiler {
 		return snapshot;
 	}
 	
-  public static void log(final Object fmt, final Object...args) {
-  	System.out.println(String.format(fmt.toString(), args));
-  }
+//  public static void log(final Object fmt, final Object...args) {
+//  	System.out.println(String.format(fmt.toString(), args));
+//  }
 	
 
 }

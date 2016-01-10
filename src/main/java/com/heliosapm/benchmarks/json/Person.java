@@ -85,7 +85,7 @@ import com.fasterxml.jackson.annotation.JsonTypeInfo;
  * </pre>
  */
 
-public class Person {
+public class Person implements java.io.Serializable {
 	@JsonProperty("_id")
 	String id = null;
 	@JsonProperty("index")
