@@ -45,6 +45,7 @@ import org.jboss.netty.buffer.ChannelBuffer;
 import org.jboss.netty.buffer.ChannelBufferFactory;
 import org.jboss.netty.buffer.ChannelBufferInputStream;
 import org.jboss.netty.buffer.ChannelBufferOutputStream;
+import org.jboss.netty.buffer.ChannelBuffers;
 import org.jboss.netty.buffer.DirectChannelBufferFactory;
 import org.jboss.netty.buffer.HeapChannelBufferFactory;
 import org.openjdk.jmh.annotations.Benchmark;
@@ -76,20 +77,6 @@ import com.sun.management.ThreadMXBean;
  * @author Whitehead (nwhitehead AT heliosdev DOT org)
  * <p><code>com.heliosapm.benchmarks.json.JSONUnmarshalling</code></p>
  * <p>Sample data generated using <a href="http://www.json-generator.com/">JSON Generator</a></p>
- * 
- * DIRECT:
-STRING Test Complete: 22840000:	Completed 2.284E7 Loads in 205066 ms.  AvgPer: 0 ms/8 µs/8978 ns.
-Stats:GC Collections:661, GC Time:1450, Thread CPU Time:203, JVM CPU Time:212, Allocated Bytes:168,191MB
-================================================================================================
-BUFFER Test Complete: 22840000:	Completed 2.284E7 Loads in 145682 ms.  AvgPer: 0 ms/6 µs/6378 ns.
-Stats:GC Collections:282, GC Time:927, Thread CPU Time:144, JVM CPU Time:151, Allocated Bytes:82,500MB
-
- * HEAP:
-STRING Test Complete: 22840000:	Completed 2.284E7 Loads in 155519 ms.  AvgPer: 0 ms/6 µs/6809 ns.
-Stats:GC Collections:351, GC Time:880, Thread CPU Time:154, JVM CPU Time:160, Allocated Bytes:168,189MB
-================================================================================================
-BUFFER Test Complete: 22840000:	Completed 2.284E7 Loads in 145653 ms.  AvgPer: 0 ms/6 µs/6377 ns.
-Stats:GC Collections:413, GC Time:877, Thread CPU Time:144, JVM CPU Time:150, Allocated Bytes:82,329MB
  */
 
 public class JSONUnmarshalling {
@@ -148,6 +135,7 @@ public class JSONUnmarshalling {
 				
 				//final byte[] jbytes = URLHelper.getBytesFromURL(JSONUnmarshalling.class.getClassLoader().getResource("data/" + sample));
 			} catch (Exception ex) {
+				ex.printStackTrace(System.err);
 				throw new RuntimeException("Failed to load sample data [" + sample + "]", ex);
 			} finally {
 				if(gz!=null) try { gz.close(); } catch (Exception x) {/* No Op */}
@@ -160,28 +148,6 @@ public class JSONUnmarshalling {
 
 	private static final ObjectMapper jsonMapper = new ObjectMapper();
 	
-  /**
-   * Deserializes a JSON formatted byte array to a specific class type
-   * <b>Note:</b> If you get mapping exceptions you may need to provide a 
-   * TypeReference
-   * @param json The byte array to deserialize
-   * @param pojo The class type of the object used for deserialization
-   * @return An object of the {@code pojo} type
-   * @throws IllegalArgumentException if the data or class was null or parsing 
-   * failed
-   */
-  public static final <T> T parseToObject(final byte[] json,
-      final Class<T> pojo) {
-    if (json == null)
-      throw new IllegalArgumentException("Incoming data was null");
-    if (pojo == null)
-      throw new IllegalArgumentException("Missing class type");
-    try {
-      return jsonMapper.readValue(json, pojo);
-    } catch (Exception e) {
-      throw new RuntimeException(e);
-    }
-  }	
   
   public static final ChannelBuffer serializeToBuffer(final ChannelBufferFactory bfactory, final Object object) {
 	    if (object == null)
@@ -189,7 +155,8 @@ public class JSONUnmarshalling {
 	    OutputStream os = null;
 	    Writer wos = null;
 	    try {
-	    	final ChannelBuffer b = bfactory.getBuffer(1024);
+//	    	final ChannelBuffer b = bfactory.getBuffer(1024);
+	    	final ChannelBuffer b = ChannelBuffers.dynamicBuffer(1024, bfactory);
 	    	os = new ChannelBufferOutputStream(b);
 	    	wos = new OutputStreamWriter(os, UTF8);
 	    	jsonMapper.writeValue(wos, object);
@@ -278,105 +245,32 @@ public class JSONUnmarshalling {
 		final Map<String, ChannelBuffer> bufferMap = DIRECT_DATA_BUFFERS;
 		log("JSON Test");
 		InputStream is = null;
-		final int WARMUP = 20000;
-		final int TEST = 20000;
 		for(String sample: DATA) {
 				try {
 					final String jsonText = bufferMap.get(sample).duplicate().toString(UTF8);
-//					log("Loaded String from [%s], length: %s", sample, jsonText.length());
 					Person[] p = parseToObject(jsonText, Person[].class);
 					log("Parsed STRING [%s] to objects: %s", sample, p.length);
+					p = parseToObject(bufferMap.get(sample).duplicate(), Person[].class);
+					log("Parsed BUFFER [%s] to objects: %s", sample, p.length);
+					String s = serializeToString(p);
+					log("Serialized to STRING [%s], size: %s", sample, s.length());
+					ChannelBuffer c = serializeToBuffer(heapFactory, p);
+					log("Serialized to Heap Buffer [%s], size: %s", sample, c.readableBytes());
+					c = serializeToBuffer(directFactory, p);
+					log("Serialized to Direct Buffer [%s], size: %s", sample, c.readableBytes());					
 				} catch (Exception ex) {
 					throw new RuntimeException("Failed to process string sample [" + sample + "]", ex);
 				} finally {
 					if(is!=null) try { is.close(); } catch (Exception x) {/* No Op */}
 				}
-				try {
-					Person[] p = parseToObject(bufferMap.get(sample).duplicate(), Person[].class);
-					log("Parsed BUFFER [%s] to objects: %s", sample, p.length);
-				} catch (Exception ex) {
-					throw new RuntimeException("Failed to process buffer sample [" + sample + "]", ex);
-				} finally {
-					if(is!=null) try { is.close(); } catch (Exception x) {/* No Op */}
-				}
 		}
-		log("Starting Warmup....");
-		long total = 0;
-		System.gc();System.gc();
-//		long[] initStats = getJVMStats();
-		ElapsedTime et = SystemClock.startClock();
-		for(int x = 0; x < WARMUP; x++) {
-			total += parseToObject(bufferMap.get("sample-56kb.json.gz").duplicate().toString(UTF8), Person[].class).length;
-		}
-//		String stats = getJVMStats(initStats, cpuUnit, memUnit);
-//		log("STRING Warmup Complete: %s:\t%s\n%s", total, et.printAvg("Loads", total), stats);
-		total = 0;
-		System.gc();System.gc();
-//		initStats = getJVMStats();
-		et = SystemClock.startClock();
-		for(int x = 0; x < WARMUP; x++) {
-			total += parseToObject(bufferMap.get("sample-56kb.json.gz").duplicate(), Person[].class).length;
-		}
-//		stats = getJVMStats(initStats, cpuUnit, memUnit);
-//		log("BUFFER Warmup Complete: %s:\t%s\n%s", total, et.printAvg("Loads", total), stats);
-		log("================================================================================================");
-		log("================================================================================================");		
-		log("Starting Test");
-		total = 0;
-		System.gc();System.gc();
-//		initStats = getJVMStats();
-		et = SystemClock.startClock();		
-		for(String sample: DATA) {
-			for(int x = 0; x < TEST; x++) {
-				total += parseToObject(bufferMap.get(sample).duplicate().toString(UTF8), Person[].class).length;
-			}
-		}
-//		stats = getJVMStats(initStats, cpuUnit, memUnit);
-//		log("STRING Test Complete: %s:\t%s\n%s", total, et.printAvg("Loads", total), stats);
-		log("================================================================================================");
-		total = 0;
-		System.gc();System.gc();
-//		initStats = getJVMStats();
-		et = SystemClock.startClock();		
-		for(String sample: DATA) {
-			for(int x = 0; x < TEST; x++) {
-				total += parseToObject(bufferMap.get(sample).duplicate(), Person[].class).length;
-			}
-		}
-//		stats = getJVMStats(initStats, cpuUnit, memUnit);
-//		log("BUFFER Test Complete: %s:\t%s\n%s", total, et.printAvg("Loads", total), stats);
-		
-
 	}
 	
-//	public static long[] getJVMStats() {
-//		final long[] countTime = new long[5];
-//		for(GarbageCollectorMXBean gc: collectors) {
-//			countTime[0] += gc.getCollectionCount();
-//			countTime[1] += gc.getCollectionTime();
-//		}
-//		countTime[2] = TX.getCurrentThreadCpuTime();
-//		countTime[3] = OS.getProcessCpuTime();
-//		countTime[4] = TX.getThreadAllocatedBytes(Thread.currentThread().getId());
-//		return countTime;
-//	}
-//	
-//	public static String getJVMStats(final long[] prior, TimeUnit cpuUnit, SpaceUnit memUnit) {
-//		final long[] countTime = getJVMStats();
-//		final StringBuilder b = new StringBuilder("JVM Stats:");
-//		b.append("\n\tGC Collections:").append(countTime[0] - prior[0]);
-//		b.append("\n\tGC Time:").append(countTime[1] - prior[1]);
-//		b.append("\n\tThread CPU Time:").append(cpuUnit.convert(countTime[2] - prior[2], TimeUnit.NANOSECONDS));
-//		b.append("\n\tJVM CPU Time:").append(cpuUnit.convert(countTime[3] - prior[3], TimeUnit.NANOSECONDS));
-//		b.append("\n\tAllocated Bytes:").append((memUnit.fovert(countTime[4] - prior[4], SpaceUnit.BYTES)));
-//		return b.toString();		
-//	}
 	
   public static void log(final Object fmt, final Object...args) {
   	System.out.println(String.format(fmt.toString(), args));
   }
   
-  private static final Map<String, String> allJVMStats = new LinkedHashMap<String, String>();
   
   public static Person[] deserPersons(final ChannelBuffer buff) {
 	  InputStream is = null;
