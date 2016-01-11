@@ -1,0 +1,132 @@
+<html>
+    <head>
+	   <title>JMH Stats Charting</title>
+        <script src="jquery.min.js"></script>
+        <script type="text/javascript" src="categories.js"></script>
+        <script type="text/javascript">
+            var exs = new RegExp(".*?(\\d+)(.*?)$");
+            var data = null;
+            var dataView = null;
+            var categories = [];
+            var filterIndexes = {};
+            var model = [
+                "TestName" : {label: 'Test Name', type: 'string', optid : 'opt_tn', values : []}
+            ];
+            $( document ).ready(function() {                                
+                console.log( "Loading data..." );
+                $.ajax({
+                    url: "results-tp.json",
+                    type: "GET",
+                    dataType: "json",
+                    success: processData
+                    
+                }).then(fillOptionSelects);
+            });
+//            function extractTestName(fullName) {
+//                return fullName.split(".")[5];
+//            }
+            function extractCategoryValues(res) {
+                var testName = res.benchmark;
+                var spl = exs.exec(testName);
+                return [                    
+                    popCatVals("BufferType", thisOrThat(testName, "Direct", "Heap")),
+                    popCatVals("ParseSource", thisOrThat(testName, "Buffer", "String")),
+                    popCatVals("Operation", thisOrThat(testName, "Read", "Write")),
+                    popCatVals("Size", parseInt(spl[1])),
+                    popCatVals("Unit", spl[2])
+                ];
+            }
+            function extractMetrics(res) {
+                popCatVals("Metric", res.primaryMetric.scoreUnit);
+                
+                $.each(res.secondaryMetrics, function(sm) {
+                    //console.dir(sm);
+                    popCatVals("Metric", res.secondaryMetrics[sm].scoreUnit);
+                });
+            }
+            function getScores(result) {
+                var scores = [];
+                scores.push({
+                    m : result.primaryMetric.scoreUnit,
+                    v : result.primaryMetric.score
+                });
+                $.each(result.secondaryMetrics, function(sm) {
+                    scores.push({
+                        m : result.secondaryMetrics[sm].scoreUnit,
+                        v : result.secondaryMetrics[sm].score
+                    });                                        
+                });  
+                return scores;
+            }
+            function repop() {
+                var filters = [];
+                $.each(filterIndexes, function(name, opt) {
+                   var v =  $(opt.selectId).val();
+                   if(v!='' && v!='*') {
+                       filters.push({column: opt.tabIndex, value: opt.typer(v)});
+                   }
+                });
+                console.info("Filters: %s", JSON.stringify(filters));
+                var rows = data.getFilteredRows(filters);
+                dataView.setRows(rows);
+                tabView.draw(dataView);
+            }
+            function fos(optName, id, index, ty) {
+                filterIndexes[optName] = {
+                  selectId : id,
+                  tabIndex : index,
+                  typer : ty!=null ? ty : function(val) { return val; }
+                };
+                categoryValues[optName].forEach(function(value) {  $(id).append($("<option></option>").attr("value",value).text(value));});
+                $(id).append($("<option></option>").attr("value",'*').text('*').attr("selected",'selected'));
+                $(id).on("change", repop);
+                
+                
+            }
+            function fillOptionSelects() {
+                fos('BufferType', '#bt_opt', 1);
+                fos('ParseSource', '#ps_opt', 2);
+                fos('Operation', '#op_opt', 3);
+                fos('Size', '#sz_opt', 4, function(val){return parseInt(val)});
+                fos('Metric', '#mt_opt', 5);
+            }
+            
+            function customConfig(json) {
+                var config = getCustomParameters(json);
+                $.each(config, function(key, cfg){
+                    model.push(key, cfg);
+                    $('#control_div').append(cfg.label + ': ' + "<select id='" + cfg.optid + "'></select>");
+                });
+            }
+            
+            function populateMeta(result, index) {
+                var testName = extractTestName(result.benchmark);
+                var paramValues = extractParameterValues(testName);
+                $.each(paramValues, function(param){
+                    // "BufferType" : parts[0], 
+                    
+                     pushx(arrItem(model, paramName).values, paramValue);                    
+                });
+            }
+            
+            function processData(json) {
+                //console.dir(json);
+                // custom config
+                customConfig(json);
+                for(var i = 0, l = json.length; i < l; i++) {
+                    var result = json[i];
+                    populateMeta(result, i);
+                }
+            }
+        </script>
+	</head>
+
+	<body>
+        <div id="control_div" style="">
+            
+        </div>
+        <div id="tab_div" style="width: 600px; height: 600px;"></div>
+        <div id="chart_div" style="width: 600px; height: 600px;"></div>
+	</body>
+
+</html>	

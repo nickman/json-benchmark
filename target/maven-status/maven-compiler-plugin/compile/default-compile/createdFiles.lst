@@ -1,0 +1,4 @@
+META-INF/CompilerHints
+com/heliosapm/benchmarks/json/Person.class
+META-INF/BenchmarkList
+com/heliosapm/benchmarks/json/Friend.class
