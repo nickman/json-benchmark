@@ -22,3 +22,9 @@
         }
         return false;
     }
+    function shiftx(arr, prepend) {
+        for(var i = 0, l = prepend.length; i < l; i++) {
+            arr.shift(prepend[i]);
+        }
+        return arr;
+    }

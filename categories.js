@@ -1,10 +1,10 @@
 var getCustomParameters = function(benchmarkJson) {
     return {
-        BufferType:     {label: 'BufferType', type: 'string', optid : '', values : [], id: -1},
-        ParseSource:    {label: 'ParseSource', type: 'string', optid : '', values : [], id: -1},
-        Operation:      {label: 'Operation', type: 'string', optid : '', values : [], id: -1},
-        Size:           {label: 'Size', type: 'number', optid : '', values : [], id: -1},
-        SizeUnit:           {label: 'Unit', type: 'string', optid : '', values : [], id: -1}
+        BufferType:     {label: 'BufferType', type: 'string', optid : '', values : [], id: -1, groupable: true},
+        ParseSource:    {label: 'ParseSource', type: 'string', optid : '', values : [], id: -1, groupable: true},
+        Operation:      {label: 'Operation', type: 'string', optid : '', values : [], id: -1, groupable: true},
+        Size:           {label: 'Size', type: 'number', optid : '', values : [], id: -1, groupable: true},
+        SizeUnit:           {label: 'Unit', type: 'string', optid : '', values : [], id: -1, groupable: false}
     };  
 }
 

@@ -19,7 +19,7 @@
             var exs = new RegExp(".*?(\\d+)(.*?)$");
             var dataTable = null;
             var dataView = null;
-            var categories = [];
+            var groupables = [];
             var dataArr = [];
             var colArr = [];
             var chart = null;
@@ -63,7 +63,7 @@
             }
             function repop() {
                 var filters = [];
-                $('select').each(function(x, sel) {
+                $('select.chart-param').each(function(x, sel) {
                     console.dir(sel);
                    var v =  $(sel).val();
                    var label = $(sel).attr('name');
@@ -74,15 +74,24 @@
                    }
                 });
                 console.info("Filters: %s", JSON.stringify(filters));
-                var rows = dataTable.getFilteredRows(filters);
-                dataView.setRows(rows);
-                tabView.draw(dataView);
-                $('#tn_active').val(rows.length);
-                if(chart!=null) {
-                    chart.draw(dataView, {
-                                        
-                                    });                    
+                if(filters.length > 0) {
+                    var rows = dataTable.getFilteredRows(filters);
+                    dataView.setRows(rows);
+                    tabView.draw(dataView);
+                    $('#tn_active').val(rows.length);
+                    if(chart!=null) {
+                        chart.draw(dataView, {
+                                            
+                                        });                    
+                    }
                 }
+            }
+            function getGroupsBys() {
+                var groupBys = [];
+                $('input.checkboxgroupby:checked').each(function(k,v) {
+                    groupBys.push(v.value);
+                });
+                return groupBys.length==0 ? null : groupBys;
             }
             
             function customConfig(json) {
@@ -106,16 +115,27 @@
 
                     }
                     model[key] = cfg;
-                    $('#control_div').append(cfg.label + ': ' + "<select id='" + cfg.optid + "' name='" + cfg.label + "'></select>&nbsp;&nbsp;&nbsp;");
+                    $('#control_div').append(cfg.label + ': ').append($("<select><select>").attr("id", cfg.optid).attr("name", cfg.label).addClass("chart-param"));
+                    if(cfg.groupable) groupables.push(cfg.label);
+                        // + "<select id='" + cfg.optid + "' name='" + cfg.label + "'></select>&nbsp;&nbsp;&nbsp;");
                     $('#' + cfg.optid).append($("<option></option>").attr("value",'*').text('*').attr("selected",'selected'));
                     $('#' + cfg.optid).on("change", repop);
                 });             
                 
                 model['ResultUnit']  = {label: 'ResultUnit', type: 'string', optid : 'rezu', values : [], id : index+1, fmt: noopFormat};
                 model['Result']  = {label: 'Result', type: 'number', optid : 'rez', values : [], id : index+2, fmt: floatFormat};
-                $('#control_div').append("ResultUnit<select id='rezu' name='ResultUnit'></select>&nbsp;&nbsp;&nbsp;");
+                
+                $('#control_div').append("Metric: ").append($("<select><select>").attr("id", "rezu").attr("name", "ResultUnit").addClass("chart-param"));                    
                 $('#rezu').append($("<option></option>").attr("value",'*').text('*').attr("selected",'selected'));
                 $('#rezu').on("change", repop);
+
+                $('#control_div').append($("<div id='barGroup'>Group: </div>"));       
+                $.each(groupables, function(k, v){
+                  $('#barGroup').append(v + ":").append($('<input type="checkbox" class="checkboxgroupby" value="' + v + '">'));  
+                });
+                
+                $('.checkboxgroupby').on("change", repop);
+
                 if(chart!=null) chartMe();
                 return index;
             }
@@ -196,13 +216,34 @@
                 $("#chart_div").empty();
                 chart = new google.visualization.BarChart(document.getElementById("chart_div"));
                 //var darr = [['TestName', 'Result', { role: 'annotation' } ]];
-                var darr = [['TestName', 'Result' ]];
+                var darr = null;
+                var groupBys = getGroupsBys();
+                var groupIds = [];
+                if(groupBys!=null) {
+                    var darr = shiftx(['TestName', 'Result'], groupBys);
+                    $.each(groupBys, function(k,v) {
+                        groupIds.push(dataView.getColumnIndex(v));
+                    });
+                } else {
+                    var darr = [['TestName', 'Result' ]];
+                }
+                console.info("Columns: [%s]", darr);
+
+                
                 var nid = dataView.getColumnIndex('Test Name');
                 var rid = dataView.getColumnIndex('Result');
+                var gid = groupBy==null ?  null : dataView.getColumnIndex(groupBy);
                 var uid = dataView.getColumnIndex('ResultUnit');
 
+
                 for(var i = 0, x = dataView.getNumberOfRows(); i < x; i++) {
-                    darr.push([dataView.getValue(i, nid), dataView.getValue(i, rid)]);
+                    if(groupBy!=null) {
+                        console.info("Group By [%s]:[%s]", groupBy, dataView.getValue(i, gid));
+                        darr.push([dataView.getValue(i, gid), dataView.getValue(i, nid), dataView.getValue(i, rid)]);
+                    } else {
+                        darr.push([dataView.getValue(i, nid), dataView.getValue(i, rid)]);
+                    }
+                    
                 }
                 var chartData = google.visualization.arrayToDataTable(darr);
                 var view = new google.visualization.DataView(chartData);
@@ -214,10 +255,11 @@
                 //                2]);                
 
                 chart.draw(view, {
+                    bars: 'horizontal' ,
                     title : dataView.getValue(0, nid) + " : " + dataView.getValue(0, uid),
                     legend: { position: 'none'  },
                     width: 1000,
-                    height: 600,
+                    height: 1200,
                     bar: {groupWidth: "75%"},
                     });
 
