@@ -18,5 +18,7 @@
     function pushx(arr, value) {
         if(arrItem(arr, value)==null) {
             arr.push(value);
+            return true;
         }
+        return false;
     }

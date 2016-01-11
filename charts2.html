@@ -2,40 +2,43 @@
     <head>
 	   <title>JMH Stats Charting</title>
         <script src="jquery.min.js"></script>
+        <script type="text/javascript" src="utils.js"></script>
         <script type="text/javascript" src="categories.js"></script>
+        <script type="text/javascript" src="https://www.google.com/jsapi"></script>
         <script type="text/javascript">
+            // Load the Visualization API and the piechart package.
+            google.load('visualization', '1.0', {'packages':['corechart', 'table', 'sankey', 'bar', 'line']});
+            // Set a callback to run when the Google Visualization API is loaded.
+            //google.setOnLoadCallback(initDataTable);
+        </script>
+
+        <script type="text/javascript">
+            function noopFormat(val){return val;}
+            function intFormat(val){return parseInt(val);}
+            function floatFormat(val){return parseFloat(val);}
             var exs = new RegExp(".*?(\\d+)(.*?)$");
-            var data = null;
+            var dataTable = null;
             var dataView = null;
             var categories = [];
+            var dataArr = [];
+            var colArr = [];
+            var chart = null;
             var filterIndexes = {};
-            var model = [
-                "TestName" : {label: 'Test Name', type: 'string', optid : 'opt_tn', values : []}
-            ];
+            var model = {
+                TestName : {label: 'Test Name', type: 'string', optid : 'tn', values : [], id : 0, fmt: noopFormat}                
+            };
+            
             $( document ).ready(function() {                                
                 console.log( "Loading data..." );
+                $('#goBtn').on("click", chartMe);
                 $.ajax({
                     url: "results-tp.json",
                     type: "GET",
                     dataType: "json",
                     success: processData
                     
-                }).then(fillOptionSelects);
+                });
             });
-//            function extractTestName(fullName) {
-//                return fullName.split(".")[5];
-//            }
-            function extractCategoryValues(res) {
-                var testName = res.benchmark;
-                var spl = exs.exec(testName);
-                return [                    
-                    popCatVals("BufferType", thisOrThat(testName, "Direct", "Heap")),
-                    popCatVals("ParseSource", thisOrThat(testName, "Buffer", "String")),
-                    popCatVals("Operation", thisOrThat(testName, "Read", "Write")),
-                    popCatVals("Size", parseInt(spl[1])),
-                    popCatVals("Unit", spl[2])
-                ];
-            }
             function extractMetrics(res) {
                 popCatVals("Metric", res.primaryMetric.scoreUnit);
                 
@@ -60,73 +63,178 @@
             }
             function repop() {
                 var filters = [];
-                $.each(filterIndexes, function(name, opt) {
-                   var v =  $(opt.selectId).val();
+                $('select').each(function(x, sel) {
+                    console.dir(sel);
+                   var v =  $(sel).val();
+                   var label = $(sel).attr('name');
+                   var colIndex = dataTable.getColumnIndex(label);
+                   console.info("Adding filter: label: [%s], colIndex: [%s], value: [%s]", label, colIndex, v);
                    if(v!='' && v!='*') {
-                       filters.push({column: opt.tabIndex, value: opt.typer(v)});
+                       filters.push({column: colIndex, value: model[label].fmt(v)});
                    }
                 });
                 console.info("Filters: %s", JSON.stringify(filters));
-                var rows = data.getFilteredRows(filters);
+                var rows = dataTable.getFilteredRows(filters);
                 dataView.setRows(rows);
                 tabView.draw(dataView);
-            }
-            function fos(optName, id, index, ty) {
-                filterIndexes[optName] = {
-                  selectId : id,
-                  tabIndex : index,
-                  typer : ty!=null ? ty : function(val) { return val; }
-                };
-                categoryValues[optName].forEach(function(value) {  $(id).append($("<option></option>").attr("value",value).text(value));});
-                $(id).append($("<option></option>").attr("value",'*').text('*').attr("selected",'selected'));
-                $(id).on("change", repop);
-                
-                
-            }
-            function fillOptionSelects() {
-                fos('BufferType', '#bt_opt', 1);
-                fos('ParseSource', '#ps_opt', 2);
-                fos('Operation', '#op_opt', 3);
-                fos('Size', '#sz_opt', 4, function(val){return parseInt(val)});
-                fos('Metric', '#mt_opt', 5);
+                $('#tn_active').val(rows.length);
+                if(chart!=null) {
+                    chart.draw(dataView, {
+                                        
+                                    });                    
+                }
             }
             
             function customConfig(json) {
                 var config = getCustomParameters(json);
+                var index = 0;
                 $.each(config, function(key, cfg){
-                    model.push(key, cfg);
-                    $('#control_div').append(cfg.label + ': ' + "<select id='" + cfg.optid + "'></select>");
-                });
+                    index++;
+                    cfg.id = index;                    
+                    cfg.optid = 'opt_' + key.toLowerCase();
+                    switch(cfg.type) {
+                        case 'string':
+                            cfg.fmt = noopFormat;
+                            break;
+                        case 'number':
+                            cfg.fmt = intFormat;
+                            break;
+                        case 'float':
+                            cfg.fmt = floatFormat;
+                            cfg.type = 'number';
+                            break;
+
+                    }
+                    model[key] = cfg;
+                    $('#control_div').append(cfg.label + ': ' + "<select id='" + cfg.optid + "' name='" + cfg.label + "'></select>&nbsp;&nbsp;&nbsp;");
+                    $('#' + cfg.optid).append($("<option></option>").attr("value",'*').text('*').attr("selected",'selected'));
+                    $('#' + cfg.optid).on("change", repop);
+                });             
+                
+                model['ResultUnit']  = {label: 'ResultUnit', type: 'string', optid : 'rezu', values : [], id : index+1, fmt: noopFormat};
+                model['Result']  = {label: 'Result', type: 'number', optid : 'rez', values : [], id : index+2, fmt: floatFormat};
+                $('#control_div').append("ResultUnit<select id='rezu' name='ResultUnit'></select>&nbsp;&nbsp;&nbsp;");
+                $('#rezu').append($("<option></option>").attr("value",'*').text('*').attr("selected",'selected'));
+                $('#rezu').on("change", repop);
+                if(chart!=null) chartMe();
+                return index;
+            }
+
+            function pushModelValue(paramName, paramValue) {
+                var cfg = model[paramName];
+                if(cfg==null) console.warn("No Model CFG for [%s]", paramName);
+                if(pushx(cfg.values, paramValue)) {
+                    if(cfg.optid != null) {
+                        $('#' + cfg.optid).append($("<option></option>").attr("value",paramValue).text(paramValue));
+                    }
+                }
             }
             
             function populateMeta(result, index) {
+                var testData = {};
                 var testName = extractTestName(result.benchmark);
+                pushModelValue("TestName", testName);
+                testData["TestName"] = testName;
                 var paramValues = extractParameterValues(testName);
-                $.each(paramValues, function(param){
-                    // "BufferType" : parts[0], 
-                    
-                     pushx(arrItem(model, paramName).values, paramValue);                    
+
+                $.each(paramValues, function(paramName, paramValue) {
+                    pushModelValue(paramName, paramValue);
+                    testData[paramName] = paramValue;
                 });
+
+                return testData;
             }
             
             function processData(json) {
                 //console.dir(json);
                 // custom config
-                customConfig(json);
+                var customCount = customConfig(json);
                 for(var i = 0, l = json.length; i < l; i++) {
                     var result = json[i];
-                    populateMeta(result, i);
+
+
+                    var testData = populateMeta(result, i);   // name: testName, cc: paramValues.length
+                    
+                    var scores = getScores(result);
+                    if(i==0) {
+                        for(var x = 0, xl = scores.length; x < xl; x++) {
+                            var score = scores[x];
+                            pushModelValue("ResultUnit", score.m);
+                        }    
+                    }
+                    for(var x = 0, xl = scores.length; x < xl; x++) {
+                        var row = {c:[]};
+                        var score = scores[x];
+                        $.each(testData, function(pName, pValue) {
+                            row.c.push({v : pValue});
+                        });
+                        row.c.push({v : score.m});
+                        row.c.push({v : score.v});
+                        dataArr.push(row);
+                        // console.info("Data Row: [%s]", JSON.stringify(row));  
+                    }
+
                 }
+                console.info("Model: [%O]", model);  
+                colArr = [];
+                $.each(model, function(k,v){ colArr.push(v); });
+                console.info("Setting up DataSource....");
+                dataTable = new google.visualization.DataTable({
+                    cols : colArr,
+                    rows : dataArr
+                });
+                dataView = new google.visualization.DataView(dataTable);
+                //dataView.hideRows(0,data.getNumberOfRows());
+                console.info("DataSource Created");
+                tabView = new google.visualization.Table(document.getElementById('tab_div'));
+                tabView.draw(dataView, {showRowNumber: false, width: '100%', height: '100%'});
+
+                
+            }
+
+            function chartMe() {
+                $("#chart_div").empty();
+                chart = new google.visualization.BarChart(document.getElementById("chart_div"));
+                //var darr = [['TestName', 'Result', { role: 'annotation' } ]];
+                var darr = [['TestName', 'Result' ]];
+                var nid = dataView.getColumnIndex('Test Name');
+                var rid = dataView.getColumnIndex('Result');
+                var uid = dataView.getColumnIndex('ResultUnit');
+
+                for(var i = 0, x = dataView.getNumberOfRows(); i < x; i++) {
+                    darr.push([dataView.getValue(i, nid), dataView.getValue(i, rid)]);
+                }
+                var chartData = google.visualization.arrayToDataTable(darr);
+                var view = new google.visualization.DataView(chartData);
+                // view.setColumns([0, 1,
+                //                { calc: "stringify",
+                //                  sourceColumn: 1,
+                //                  type: "string",
+                //                  role: "annotation" },
+                //                2]);                
+
+                chart.draw(view, {
+                    title : dataView.getValue(0, nid) + " : " + dataView.getValue(0, uid),
+                    legend: { position: 'none'  },
+                    width: 1000,
+                    height: 600,
+                    bar: {groupWidth: "75%"},
+                    });
+
             }
         </script>
 	</head>
 
 	<body>
         <div id="control_div" style="">
-            
+            <button id="goBtn">Chart!</button>
+
+            Active: <input id='tn_active' value='0' size="3" disabled="true"></input>
         </div>
-        <div id="tab_div" style="width: 600px; height: 600px;"></div>
-        <div id="chart_div" style="width: 600px; height: 600px;"></div>
+        <table style="width: 90%;"><tr style="vertical-align:top;">
+        <td><div id="tab_div" style="width: 100%; height: 600px;"></div></td>
+        <td><div id="chart_div" style="width: 100%; height: 600px;"></div></td>
+        </tr></table>
 	</body>
 
 </html>	
