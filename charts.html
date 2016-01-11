@@ -1,0 +1,205 @@
+<html>
+    <head>
+	   <title>JMH Stats Charting</title>
+        <script src="https://ajax.googleapis.com/ajax/libs/jquery/2.1.3/jquery.min.js"></script>
+        <script type="text/javascript" src="https://www.google.com/jsapi"></script>
+        <script type="text/javascript">
+            // Load the Visualization API and the piechart package.
+            google.load('visualization', '1.0', {'packages':['corechart', 'table']});
+            // Set a callback to run when the Google Visualization API is loaded.
+            //google.setOnLoadCallback(initDataTable);
+        </script>
+        <script type="text/javascript">
+            var exs = new RegExp(".*?(\\d+)(.*?)$");
+            var data = null;
+            var dataView = null;
+            var categories = ["BufferType", "ParseSource", "Operation", "Size", "Unit", "Metric"];
+            var filterIndexes = {};
+            var categoryValues = {
+                "TestName" : [],
+                "BufferType" : [],
+                "ParseSource" : [],
+                "Operation" : [],
+                "Size" : [],
+                "Unit" : [],
+                "Metric" : []
+            };
+            $( document ).ready(function() {                                
+                console.log( "Loading data..." );
+                $.ajax({
+                    url: "results-tp.json",
+                    type: "GET",
+                    dataType: "json",
+                    success: processData
+                    
+                }).then(fillOptionSelects);
+            });
+            function contains(tar, srch) {
+                return tar.indexOf(srch) != -1;
+            }
+            function thisOrThat(str, one, two) {
+                return contains(str, one) ? one : two;
+            }
+            function popCatVals(catName, v) {
+                if($.inArray(v, categoryValues[catName])==-1) {
+                    categoryValues[catName].push(v);                              
+                }
+                return v;
+            }
+            function extractTestName(fullName) {
+                return fullName.split(".")[5];
+            }
+            function extractCategoryValues(res) {
+                var testName = res.benchmark;
+                var spl = exs.exec(testName);
+                return [                    
+                    popCatVals("BufferType", thisOrThat(testName, "Direct", "Heap")),
+                    popCatVals("ParseSource", thisOrThat(testName, "Buffer", "String")),
+                    popCatVals("Operation", thisOrThat(testName, "Read", "Write")),
+                    popCatVals("Size", parseInt(spl[1])),
+                    popCatVals("Unit", spl[2])
+                ];
+            }
+            function extractMetrics(res) {
+                popCatVals("Metric", res.primaryMetric.scoreUnit);
+                
+                $.each(res.secondaryMetrics, function(sm) {
+                    //console.dir(sm);
+                    popCatVals("Metric", res.secondaryMetrics[sm].scoreUnit);
+                });
+            }
+            function initDataTable(d) {
+                d.addColumn('string', 'Test Name');
+                d.addColumn('string', 'BufferType');
+                d.addColumn('string', 'ParseSource');
+                d.addColumn('string', 'Operation');
+                d.addColumn('number', 'Size');
+                d.addColumn('string', 'Unit');
+                d.addColumn('string', 'Metric');
+                d.addColumn('number', 'Result');
+            }
+            function getScores(result) {
+                var scores = [];
+                scores.push({
+                    m : result.primaryMetric.scoreUnit,
+                    v : result.primaryMetric.score
+                });
+                $.each(result.secondaryMetrics, function(sm) {
+                    scores.push({
+                        m : result.secondaryMetrics[sm].scoreUnit,
+                        v : result.secondaryMetrics[sm].score
+                    });                                        
+                });  
+                return scores;
+            }
+            function repop() {
+                var filters = [];
+                $.each(filterIndexes, function(name, opt) {
+                   var v =  $(opt.selectId).val();
+                   if(v!='' && v!='*') {
+                       filters.push({column: opt.tabIndex, value: opt.typer(v)});
+                   }
+                });
+                console.info("Filters: %s", JSON.stringify(filters));
+                var rows = data.getFilteredRows(filters);
+                dataView.setRows(rows);
+                tabView.draw(dataView);
+            }
+            function fos(optName, id, index, ty) {
+                filterIndexes[optName] = {
+                  selectId : id,
+                  tabIndex : index,
+                  typer : ty!=null ? ty : function(val) { return val; }
+                };
+                categoryValues[optName].forEach(function(value) {  $(id).append($("<option></option>").attr("value",value).text(value));});
+                $(id).append($("<option></option>").attr("value",'*').text('*').attr("selected",'selected'));
+                $(id).on("change", repop);
+                
+                
+            }
+            function fillOptionSelects() {
+                fos('BufferType', '#bt_opt', 1);
+                fos('ParseSource', '#ps_opt', 2);
+                fos('Operation', '#op_opt', 3);
+                fos('Size', '#sz_opt', 4, function(val){return parseInt(val)});
+                fos('Metric', '#mt_opt', 5);
+            }
+            function processData(json) {
+                //console.dir(json);
+                var dataArr = [];
+                var colArr = [
+                    {id: 'tn', label: 'Test Name', type: 'string'},
+                    {id: 'bt', label: 'Buffer Type', type: 'string'},
+                    {id: 'ps', label: 'Parse Source', type: 'string'},
+                    {id: 'op', label: 'Operation', type: 'string'},
+                    {id: 'sz', label: 'Size', type: 'number'},
+                    {id: 'un', label: 'Unit', type: 'string'},
+                    {id: 'mt', label: 'Metric', type: 'string'},
+                    {id: 'rs', label: 'Result', type: 'number'},
+                ];
+                for(var i = 0, l = json.length; i < l; i++) {
+                    var result = json[i];
+                    if(i==0) extractMetrics(result);
+                    var testName = popCatVals("TestName", extractTestName(result.benchmark));
+                    var testCats = extractCategoryValues(result);
+                    var metricOps = categoryValues["Metrics"];
+                    var scores = getScores(result);
+                    for(var x = 0, xl = scores.length; x < xl; x++) {
+                        var score = scores[x];
+                        dataArr.push(
+                            {c:[
+                                {v: testName},              // 0. Test Name
+                                {v: testCats[0]},           // 1. Buffer Type
+                                {v: testCats[1]},           // 2. Parse Source
+                                {v: testCats[2]},           // 3. Operation
+                                {v: testCats[3]},           // 4. Size
+                                {v: testCats[4]},           // 5. Unit
+                                {v: score.m},               // 6. Metric
+                                {v: score.v}                // 7. Score
+                            ]}
+                        );
+                    }
+                    //console.info("Test Name: [%s], Categories: %s", testName, JSON.stringify(testCats));
+                    
+                }
+                console.info("Setting up DataSource....");
+                data = new google.visualization.DataTable({
+                    cols : colArr,
+                    rows : dataArr
+                });
+                dataView = new google.visualization.DataView(data);
+                //dataView.hideRows(0,data.getNumberOfRows());
+                console.info("DataSource Created");
+                tabView = new google.visualization.Table(document.getElementById('tab_div'));
+                tabView.draw(dataView, {showRowNumber: false, width: '100%', height: '100%'});
+                /*
+                tabView = google.visualization.drawChart({
+                        "containerId": "tab_div",
+                        "dataTable": dataView,
+                        "chartType": "Table",
+                        "options": {
+                            showRowNumber: false, 
+                            width: '100%', 
+                            height: '100%'
+                        }
+                     });                
+                */
+                //console.info(JSON.stringify(categoryValues));
+            }
+        </script>
+	</head>
+
+	<body>
+        <div id="control_div" style="">
+            Test Name Filter: <input id='tn_filter'></input>
+            Buffer Type: <select id='bt_opt'></select>
+            Parse Source: <select id='ps_opt'></select>
+            Operation: <select id='op_opt'></select>
+            Size: <select id='sz_opt'></select>
+            Metric: <select id='mt_opt'></select>
+        </div>
+        <div id="tab_div" style="width: 600px; height: 600px;"></div>
+        <div id="chart_div" style="width: 600px; height: 600px;"></div>
+	</body>
+
+</html>	

@@ -91,6 +91,8 @@ public class JSONUnmarshalling {
 	
 	public static final int loopsPerOp = 1000;
 	public static final TimeUnit outputTimeUnit = TimeUnit.MILLISECONDS;
+
+	public static final int PERSON_APPROX_SIZE = 750;
 	
 	//@OutputTimeUnit(TimeUnit.MILLISECONDS)
 	
@@ -149,14 +151,14 @@ public class JSONUnmarshalling {
 	private static final ObjectMapper jsonMapper = new ObjectMapper();
 	
   
-  public static final ChannelBuffer serializeToBuffer(final ChannelBufferFactory bfactory, final Object object) {
+  public static final ChannelBuffer serializeToBuffer(final ChannelBufferFactory bfactory, final Person...object) {
 	    if (object == null)
 	      throw new IllegalArgumentException("Object was null");
 	    OutputStream os = null;
 	    Writer wos = null;
 	    try {
 //	    	final ChannelBuffer b = bfactory.getBuffer(1024);
-	    	final ChannelBuffer b = ChannelBuffers.dynamicBuffer(1024, bfactory);
+	    	final ChannelBuffer b = ChannelBuffers.dynamicBuffer(PERSON_APPROX_SIZE * object.length, bfactory);
 	    	os = new ChannelBufferOutputStream(b);
 	    	wos = new OutputStreamWriter(os, UTF8);
 	    	jsonMapper.writeValue(wos, object);

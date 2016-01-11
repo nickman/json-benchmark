@@ -46,14 +46,14 @@ public class TestBenchmark {
 	launchBenchmark() throws Exception {
 
 		Options opt = new OptionsBuilder()
-		.include(System.getProperty("test.names", ".*Write.*"))
+		.include(System.getProperty("test.names", ".*"))
 		// Set the following options as needed
 		.mode (Mode.Throughput)
 		.timeUnit(TimeUnit.MILLISECONDS)
 		.warmupTime(TimeValue.seconds(5))
-		.warmupIterations(1)
+		.warmupIterations(3)
 		.measurementTime(TimeValue.seconds(5))
-		.measurementIterations(2)
+		.measurementIterations(5)
 		.threads(3)
 //		.syncIterations(false)
 		.forks(1)
@@ -61,8 +61,8 @@ public class TestBenchmark {
 		.shouldDoGC(true)
 		.addProfiler(JVMSummaryProfiler.class)
 //		.output("output.txt")
-		.result("results-tp.csv")
-		.resultFormat(ResultFormatType.CSV)
+		.result("results-tp.json")
+		.resultFormat(ResultFormatType.JSON)
 //		.addProfiler(HotspotMemoryProfiler.class)
 //		.addProfiler(LinuxPerfAsmProfiler.class)
 		
