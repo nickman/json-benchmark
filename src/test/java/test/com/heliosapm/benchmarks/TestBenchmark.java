@@ -53,7 +53,7 @@ public class TestBenchmark {
 		.warmupTime(TimeValue.seconds(5))
 		.warmupIterations(3)
 		.measurementTime(TimeValue.seconds(5))
-		.measurementIterations(5)
+		.measurementIterations(10)
 		.threads(3)
 //		.syncIterations(false)
 		.forks(1)
